@@ -1,3 +1,13 @@
+--[[
+	This LIB was written by XEKEX
+	if you want to copy / understand / New idea to the Lib please contact me on GameGuardian Forum : 
+	https://gameguardian.net/forum/profile/1258371-xekex/
+	
+
+	If u want to import The Script with MakeRequest link : 
+	
+]]--
+
 XEK = {
     ['Text2Dword'] = function(text,order)
         local junk = {[1]=''}
