@@ -4,7 +4,7 @@
 	https://gameguardian.net/forum/profile/1258371-xekex/
 	
 
-	If u want to import The Script with MakeRequest link : 
+	If u want to import The Script with MakeRequest link : https://raw.githubusercontent.com/chihaamin/XEKEX/main/xLIB.lua
 	
 ]]--
 
