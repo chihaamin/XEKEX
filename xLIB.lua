@@ -3,11 +3,9 @@
 	if you want to copy / understand / New idea to the Lib please contact me on GameGuardian Forum : 
 	https://gameguardian.net/forum/profile/1258371-xekex/
 	
-
 	If u want to import The Script with MakeRequest link : https://raw.githubusercontent.com/chihaamin/XEKEX/main/xLIB.lua
 	
 ]]--
-
 XEK = {
     ['Text2Dword'] = function(text,order)
         local junk = {[1]=''}
@@ -132,12 +130,21 @@ XEK = {
               return hd(decryp)
           end
     end,
-    ['IEEE'] = function(Rvalue) -- IEEE754 floating point(convert float / double to hexdecimal )
-	  if Rvalue == math.abs(Rvalue) then Sig = 0 else Sig = 1 end
+    ['ARMIT'] = function (va,force) -- ARMIT(2.1) or ARMIT(2.1,'float') double int bool return a arm 32 instruction in a table
+  local Lib = {
+  ['int'] = function(any)
+    return {[1] = '~A movw r0, #'..any, [2] = ';~A bx lr',}
+  end,
+  ['bool'] = function(any)
+    if tostring(any) == 'true' then return {[1] = '~A mov r0, #1',[2] = '~A bx lr'} else return {[1] ='~A mov r0, #0',[2] = '~A bx lr'} end
+  end,
+  ['float'] = function(Rvalue,force_type)
+if Rvalue == math.abs(Rvalue) then Sig = 0 else Sig = 1 end
 Bias = nil
 int,frac = math.modf(Rvalue)
 if frac ~= 0 then frac = string.format("%."..(#tostring(Rvalue)-#tostring(int)-1).."f ",frac) end
 Exponent_bias = (#tostring(Rvalue)-1)*math.log(2)
+if force_type == 'double' then Exponent_bias = 8 elseif force_type == 'float' then Exponent_bias = 7 end
 if Exponent_bias >= 0 and Exponent_bias <= 7.22	then Bias = 127 bit = 8 arc = 32
 elseif Exponent_bias > 7.22	and Exponent_bias <= 15.95 then Bias = 1023 bit = 11 arc = 64
   elseif Exponent_bias > 15.95 then print('Error : Number too big') return end
@@ -164,52 +171,90 @@ for k = 2 ,#pattern-1 do
   end
    if pf == false then return table.concat(result),result end
 end
-mantissa,exponent = math.frexp(Rvalue/2)
+
+mantissa,exponent = math.frexp(Rvalue)
 exponent = mul(math.frexp((exponent + Bias )/2))
 mantissa_,pattern = mul(mantissa)
 mantissa = mantissa_:sub(2)
+
 if #exponent < bit then 
   repeat 
-    exponent = '0'..exponent 
+    exponent = exponent..'0'
     until #exponent == bit
     end
   value = Sig..exponent..mantissa
-  value = value:sub(1,32)
+  value = value:sub(1,arc)
+
 if #value ~= arc then 
-if table.concat(pattern) == mantissa_ then 
+  if table.concat(pattern) == mantissa_ then 
   repeat
+    if arc == 64 then
     value = value..'0'
-    until #value == arc+1
-  else
-    i = 1 
-    repeat 
-      if i == #pattern then value = value..pattern[i] i = 1 end
-      value = value..pattern[i]
-        i = i + 1
-      until #value == arc
-    end
+    elseif arc == 32 then 
+       value = '0'..value
+      end
+    until #value == arc
+  elseif table.concat(pattern) ~= mantissa_ then
+    repeat
+   for i = 1 , #pattern do 
+     value = value..pattern[i]
+     if #value == arc then break; end
+     end
+     until #value == arc
+     end
 end
 local result = 0
 for i=#value,1,-1 do 
 power = #value-i
 result = result + value:sub(i,i)*2^power
 end
-return (string.format('%X',result):sub(1,arc/4))
-end,
-	['Farm'] = function(value) -- hex value to arm 32 (float only)
-if #value == 8 then
-value1 = value:sub(1,4)
-value2 = value:sub(5,8)
-else 
-print('Try Double Precision')
-end
+result =  string.format('%08X',result):sub(1,arc/4)
+if #result == 8 then
+local value1 = result:sub(1,4)
+local value2 = result:sub(5,8)
 final = {
-   [1] = '~A movw r0, #'..value2,
-   [2] = '~A movt r0, '..value1,
+   [1] = '~A movw r0, #'..tonumber('0x'..value2),
+   [2] = '~A movt r0, #'..tonumber('0x'..value1),
    [3] = '~A vmov s15, r0',
    [4] = '~A vmov.f32 s0, s15',
    [5] = '~A bx lr',
   }
   return final
+elseif #result == 16 then
+local value1 = result:sub(1,4)
+local value1_ = result:sub(5,8)
+local value2 = result:sub(9,12)
+local value2_ = result:sub(13,16)
+final = {
+   [1] = '~A movw r0, #'..tonumber('0x'..value2_),
+   [2] = '~A movt r0, #'..tonumber('0x'..value2),
+   [3] = '~A movw r1, #'..tonumber('0x'..value1_),
+   [4] = '~A movt r1, #'..tonumber('0x'..value1),
+   [5] = '~A vmov d16, r0, r1',
+   [6] = '~A vmov.f64 d0, d16',
+   [7] = '~A bx lr',
+  }
+
+  return final
+end
+
+end,
+['double'] = function(any,forced)
+  return Lib.float(any,forced)
+  end,
+}
+  local function get_type(va)
+  local type_ = nil
+  if type(va) == 'number' then
+    _,__ = math.modf(va)
+    if __ == 0 then type_ = 'int' else 
+      if (#tostring(_)+#tostring(__))*math.log10(2) > 0 and (#tostring(_)+#tostring(__))*math.log10(2) < 7.22 then type_ = 'float' else type_ = 'float' end end
+  elseif type(va) == 'boolean' then type_ = 'bool'
+  end
+  return type_
+  end
+  if force ~= nil then return Lib[force](va,force) else
+return Lib[get_type(va)](va,force)
+end
 end,
 }
