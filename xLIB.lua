@@ -131,7 +131,7 @@ XEK = {
           end
     end,
     ['ARMIT'] = function (va,force) -- ARMIT(2.1) or ARMIT(2.1,'float') double int bool return a arm 32 instruction in a table
-  local Lib = {
+  Lib = {
   ['int'] = function(any)
     return {[1] = '~A movw r0, #'..any, [2] = ';~A bx lr',}
   end,
@@ -139,76 +139,22 @@ XEK = {
     if tostring(any) == 'true' then return {[1] = '~A mov r0, #1',[2] = '~A bx lr'} else return {[1] ='~A mov r0, #0',[2] = '~A bx lr'} end
   end,
   ['float'] = function(Rvalue,force_type)
-if Rvalue == math.abs(Rvalue) then Sig = 0 else Sig = 1 end
-Bias = nil
-int,frac = math.modf(Rvalue)
-if frac ~= 0 then frac = string.format("%."..(#tostring(Rvalue)-#tostring(int)-1).."f ",frac) end
-Exponent_bias = (#tostring(Rvalue)-1)*math.log(2)
-if force_type == 'double' then Exponent_bias = 8 elseif force_type == 'float' then Exponent_bias = 7 end
-if Exponent_bias >= 0 and Exponent_bias <= 7.22	then Bias = 127 bit = 8 arc = 32
-elseif Exponent_bias > 7.22	and Exponent_bias <= 15.95 then Bias = 1023 bit = 11 arc = 64
-  elseif Exponent_bias > 15.95 then print('Error : Number too big') return end
-function mul(_)
-  _ = math.abs(_)
-  local result = {}
-  local pattern = {}
-  local pf = false
-  local start = nil
-  repeat
-    _ = _%1 * 2
-    result[#result+1] = math.floor(_)
-    pattern[#pattern+1] = string.format("%.2f",_)
-for k = 2 ,#pattern-1 do 
-  if pattern[#pattern] == pattern[k] then start = k+1 ;pf = true end 
+  local Option = 'f'
+  if force_type == 'float' then Option = "d" else Option = 'f' end
+  local bin = (string.pack(Option,Rvalue))
+  local result = ''
+for i = #bin , 1 , -1 do 
+  result = result ..(string.format('%X',string.byte(bin,i,i)))
   end
-  until _ == 1 | 0 or pf == true
-  if pf == true then
-  pattern = {}
-    for i = start ,#result do 
-      pattern[#pattern+1] = result[i]
-    end
-  return table.concat(result),pattern
-  end
-   if pf == false then return table.concat(result),result end
-end
-
-mantissa,exponent = math.frexp(Rvalue)
-exponent = mul(math.frexp((exponent + Bias )/2))
-mantissa_,pattern = mul(mantissa)
-mantissa = mantissa_:sub(2)
-
-if #exponent < bit then 
-  repeat 
-    exponent = exponent..'0'
-    until #exponent == bit
-    end
-  value = Sig..exponent..mantissa
-  value = value:sub(1,arc)
-
-if #value ~= arc then 
-  if table.concat(pattern) == mantissa_ then 
+  if #result < 8 and Option == 'f' then 
   repeat
-    if arc == 64 then
-    value = value..'0'
-    elseif arc == 32 then 
-       value = '0'..value
-      end
-    until #value == arc
-  elseif table.concat(pattern) ~= mantissa_ then
-    repeat
-   for i = 1 , #pattern do 
-     value = value..pattern[i]
-     if #value == arc then break; end
-     end
-     until #value == arc
-     end
-end
-local result = 0
-for i=#value,1,-1 do 
-power = #value-i
-result = result + value:sub(i,i)*2^power
-end
-result =  string.format('%08X',result):sub(1,arc/4)
+  result = result..'0'
+  until #result == 8
+  elseif #result < 16 and Option == 'd' then 
+  repeat
+  result = result..'0'
+  until #result == 16
+  end
 if #result == 8 then
 local value1 = result:sub(1,4)
 local value2 = result:sub(5,8)
@@ -248,7 +194,7 @@ end,
   if type(va) == 'number' then
     _,__ = math.modf(va)
     if __ == 0 then type_ = 'int' else 
-      if (#tostring(_)+#tostring(__))*math.log10(2) > 0 and (#tostring(_)+#tostring(__))*math.log10(2) < 7.22 then type_ = 'float' else type_ = 'float' end end
+      type_ = math.type(va) end 
   elseif type(va) == 'boolean' then type_ = 'bool'
   end
   return type_
