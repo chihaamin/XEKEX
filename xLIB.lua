@@ -7,46 +7,29 @@
 	
 ]]--
 XEK = {
-    ['Text2Dword'] = function(text,order)
-        local junk = {[1]=''}
-        local stln = #text
-        if stln%2 ~= 0 then stln = stln+1 end
-      
-        for i = 1,stln/2 do 
-          local v1 = (string.byte(text,i%stln*2-1))
-          local v2 = (string.byte(text,i%stln*2))
-          if v2 == nil then v2 = 0 end
-          local v3 = 65536*v2+v1
-          if #text > 2 then table.insert(junk,1,junk[1]..';'..v3) 
-          elseif #text <= 2 then
-            table.insert(junk,1,v3) end
-        end
-        local function repeats(s,c)
-          local _,n = s:gsub(c,"")
-          return n
-      end
-        local ord = ''
-        if order == true and stln > 2 then  ord = ('::'..repeats(tostring(junk[1]:sub(2)),';') * 4 + 1) end
-        
-      if #text > 2 then
-        return junk[1]:sub(2)..ord else return junk[1]..ord end
+    ['Text2Dword'] = function(str)
+	local bytes = {}
+	for i = 1,#str do 
+	 bytes[#bytes+1] = (string.byte(str,i,i))
+	 if #str%2 ~= 0 and i == #str then bytes[#bytes+1] = 0 end
+	  end
+
+	local final = ''
+	for i = 2 ,#bytes,2 do 
+	if i == #bytes then seperator = '::'..#str+4 else seperator = ';' end
+	final = ((final..bytes[i-1] + bytes[i] * 2^16)..seperator):gsub('.0','')
+	end
+return final
     end,
     ['Dword2Text'] = function(val)
-        local result= {[1] = ''}
-        local splited = {};
-        for match in (val..';'):gmatch("(.-)"..';') do
-            table.insert(splited, match);
-        end
-        for i,v in pairs(splited) do 
-        local chk = #tostring(splited[i])
-        local v1 = math.floor(splited[i]/65536)
-        local v2 = splited[i]-(65536*v1)
-        local c1 = utf8.char(v2,v1)
-        if chk < 7 then table.insert(result,1,result[1]..utf8.char(splited[i])) end
-        if chk == 7 then table.insert(result,1,result[1]..c1) end
-        if chk > 7 then table.insert(result,1,"Sorry this is not a readable string.") break end
-        end
-        return result[1]
+		string = ''
+		for _ in val:gmatch('(%d+)%p') do
+		char2,char1 = math.modf((_)/(2^16))
+		char1 = math.floor(char1*2^16)
+		if char2 == 0 then string = string..string.char(char1) break end
+		string = string..(string.char(char1)..string.char(char2))
+		end
+        return string
     end,
     ['hex'] = function(val,hx)
             local val1 = string.format('%08X', val):sub(1,8)-- change this to 1,16 incase x64 bit memory
@@ -130,77 +113,89 @@ XEK = {
               return hd(decryp)
           end
     end,
-    ['ARMIT'] = function (va,force) -- ARMIT(2.1) or ARMIT(2.1,'float') double int bool return a arm 32 instruction in a table
-  Lib = {
-  ['int'] = function(any)
-    return {[1] = '~A movw r0, #'..any, [2] = ';~A bx lr',}
-  end,
-  ['bool'] = function(any)
-    if tostring(any) == 'true' then return {[1] = '~A mov r0, #1',[2] = '~A bx lr'} else return {[1] ='~A mov r0, #0',[2] = '~A bx lr'} end
-  end,
-  ['float'] = function(Rvalue,force_type)
-  local Option = 'f'
-  if force_type == 'float' then Option = "d" else Option = 'f' end
-  local bin = (string.pack(Option,Rvalue))
-  local result = ''
-for i = #bin , 1 , -1 do 
-  result = result ..(string.format('%X',string.byte(bin,i,i)))
-  end
-  if #result < 8 and Option == 'f' then 
-  repeat
-  result = result..'0'
-  until #result == 8
-  elseif #result < 16 and Option == 'd' then 
-  repeat
-  result = result..'0'
-  until #result == 16
-  end
-if #result == 8 then
-local value1 = result:sub(1,4)
-local value2 = result:sub(5,8)
-final = {
-   [1] = '~A movw r0, #'..tonumber('0x'..value2),
-   [2] = '~A movt r0, #'..tonumber('0x'..value1),
-   [3] = '~A vmov s15, r0',
-   [4] = '~A vmov.f32 s0, s15',
-   [5] = '~A bx lr',
-  }
-  return final
-elseif #result == 16 then
-local value1 = result:sub(1,4)
-local value1_ = result:sub(5,8)
-local value2 = result:sub(9,12)
-local value2_ = result:sub(13,16)
-final = {
-   [1] = '~A movw r0, #'..tonumber('0x'..value2_),
-   [2] = '~A movt r0, #'..tonumber('0x'..value2),
-   [3] = '~A movw r1, #'..tonumber('0x'..value1_),
-   [4] = '~A movt r1, #'..tonumber('0x'..value1),
-   [5] = '~A vmov d16, r0, r1',
-   [6] = '~A vmov.f64 d0, d16',
-   [7] = '~A bx lr',
-  }
+    ['ARMIT'] = function(value, precision, mode) 
+	-- value any type true/123/263.3/..etc #should not be a string / precision need to be string for float and double / mode must be 32 or 64 as number / precision and mode are by default float and 32bit  if you want an int or bool as 64 bit make precision nil <- must
+	-- it return a table each key 1.2.3..etc contain the instructions
+precision = precision or "float"
+mode = mode or 32
 
-  return final
+local instructions = {}
+if type(value) == "boolean" then
+if mode == 32 then
+instructions[#instructions+1] = "~A MOV R0, #0x" .. (value and 1 or 0)
+instructions[#instructions+1] = "~A BX LR"
+elseif mode == 64 then
+instructions[#instructions+1] = "~A MOV X0, #0x" .. (value and 1 or 0)
+instructions[#instructions+1] = "~A RET"
 end
+elseif type(value) == "number" then
+  if math.type(value) == "integer" then
+  -- integer
+  local hex = string.format("%X", value)
+  if #hex <= 4 then
+    if mode == 32 then
+    instructions[#instructions+1] = "~A MOVW R0, #0x" .. hex
+    instructions[#instructions+1] = "~A BX LR"
+    elseif mode == 64 then
+    instructions[#instructions+1] = "~A MOVZ X0, #0x" .. hex
+    instructions[#instructions+1] = "~A RET"
+    end
+      else
+    local low16 = string.format("%X", value & 0xFFFF)
+    local high16 = string.format("%X", (value >> 16) & 0xFFFF)
+        if mode == 32 then
+        instructions[#instructions+1] = "~A MOVW R0, #0x" .. low16
+        instructions[#instructions+1] = "~A MOVT R0, #0x" .. high16
+        instructions[#instructions+1] = "~A BX LR"
+        elseif mode == 64 then
+        instructions[#instructions+1] = "~A MOVZ X0, #0x" .. low16
+        instructions[#instructions+1] = "~A MOVK X0, #0x" .. high16
+        instructions[#instructions+1] = "~A RET"
+        end
+    end
+    elseif precision == "float" then
+      local binary = string.pack("f", value)
+    local hex = ""
+    for i = 1, #binary do
+      hex = hex .. string.format("%02X", string.byte(string.reverse(binary), i))
+    end
+    local low16 =  hex:sub(5, 8)
+    local high16 = hex:sub(1, 4)
+    if mode == 32 then
+      instructions[#instructions+1] = "~A MOVW R0, #0x" .. low16
+      instructions[#instructions+1] = "~A MOVT R0, #0x" .. high16
+      instructions[#instructions+1] = "~A VMOV.F32 S0, R0"
+      instructions[#instructions+1] = "~A BX LR"
+    elseif mode == 64 then
+      instructions[#instructions+1] = "~A MOVZ X0, #0x" .. low16
+      instructions[#instructions+1] = "~A MOVK X0, #0x" .. high16
+      instructions[#instructions+1] = "~A FMOV S0, X0"
+      instructions[#instructions+1] = "~A RET"
+    end
+    elseif precision == "double" then 
+      local binary = string.pack("d", value)
+    local hex = ""
+    for i = 1, 8 do
+      hex = hex .. string.format("%02X", string.byte(string.reverse(binary), i))
+    end
 
-end,
-['double'] = function(any,forced)
-  return Lib.float(any,forced)
-  end,
-}
-  local function get_type(va)
-  local type_ = nil
-  if type(va) == 'number' then
-    _,__ = math.modf(va)
-    if __ == 0 then type_ = 'int' else 
-      type_ = math.type(va) end 
-  elseif type(va) == 'boolean' then type_ = 'bool'
+    if mode == 32 then
+     instructions[#instructions+1] = "~A MOVT R0, #0x" .. string.sub(hex, 13, 16)
+     instructions[#instructions+1] = "~A MOVW R0, #0x" .. string.sub(hex, 9, 12)
+     instructions[#instructions+1] = "~A MOVT R1, #0x" .. string.sub(hex, 5, 8)
+     instructions[#instructions+1] = "~A MOVW R1, #0x" .. string.sub(hex, 1, 4)
+     instructions[#instructions+1] = "~A VMOV.F64 D0, R0, R1"
+     instructions[#instructions+1] = "~A BX LR"
+    elseif mode == 64 then
+      instructions[#instructions+1] = "~A MOVK X0, #0x" .. string.sub(hex, 13, 16)
+      instructions[#instructions+1] = "~A MOVZ X0, #0x" .. string.sub(hex, 9, 12)
+      instructions[#instructions+1] = "~A MOVK X1, #0x" .. string.sub(hex, 5, 8)
+      instructions[#instructions+1] = "~A MOVZ X1, #0x" .. string.sub(hex, 1, 4)
+      instructions[#instructions+1] = "~A FMOV D0, X0, X1"
+      instructions[#instructions+1] = "~A RET"
+    end
+    end
   end
-  return type_
-  end
-  if force ~= nil then return Lib[force](va,force) else
-return Lib[get_type(va)](va,force)
-end
+  return instructions
 end,
 }
