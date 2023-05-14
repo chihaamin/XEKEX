@@ -7,6 +7,17 @@
 	
 ]]--
 XEK = {
+['import'] = function (url) -- import a lib from any github or pastbin
+local lib = nil
+load_lib = gg.makeRequest(url)
+  if load_lib.code == 200 then -- check the status of the request
+   lib = load(load_lib.content,'bt')() -- similar to require('json')
+   return lib
+   else 
+     print('IMPORT FUNCTION ERROR!')
+     return nil
+  end
+end
     ['Text2Dword'] = function(str)
   -- Create an empty table to store the bytes of the input string
   local bytes = {}
