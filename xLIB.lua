@@ -186,9 +186,7 @@ myTable[4] = "orange"
                    or (decimalValue >= -0x8000000000000000 and decimalValue <= 0x7FFFFFFFFFFFFFFF) and 8
                    or error("Value out of range")
     local reg =  ((aarch and hex_size == 8) and 'X') or ((aarch and hex_size == 4) and 'W') or 'R' -- get registry name
-    local fpu = ((aarch and hex_size == 8) and {['f'] = "~A8 FMOV S%d, %s%d",['d'] = "~A8 FMOV D%d, %s%d"} or (aarch and hex_size == 4) and {['f'] = "~A8 FMOV S%d, %s%d",['d'] = "~A8 FMOV D%d, %s%d"} )
-    or {['f'] = "~A VMOV S%d, %s%d",['d'] = "~A VMOV D%d, %s%d, %s%d"} -- setting the FPU parameter for the instructions with the string.format( "formatstring",... )
-    if hex_size == 1 then -- generate instructions depending on the size of the value
+       if hex_size == 1 then -- generate instructions depending on the size of the value
     instructions[#instructions + 1] = string.format("%s MOV %s%d, #0x%s",ggSyntax,reg,0,string.format('%X',tonumber(value,16)))
     elseif hex_size == 2 then
     instructions[#instructions + 1] = string.format("%s MOV%s %s%d, #0x%s",ggSyntax,mov[1],reg,0,string.format('%X',tonumber(value,16)))
@@ -216,11 +214,31 @@ myTable[4] = "orange"
     instructions[#instructions + 1] = string.format("%s MOV%s %s%d, #0x%s",ggSyntax,mov[2],reg,1,string.format('%X',tonumber(value_top) >> 16 & 0xFFFF))
     end
     if (datatype == 'f') or (datatype == 'd') then -- add the FPU instructions
+       local fpu = {}
+       fpu = ((aarch and hex_size == 8) and {
+        ['f'] = "~A8 FMOV S15, %s%d\n~A8 VMOV.F32 S0, S15",
+        ['d'] = "~A8 FMOV D16, %s%d\n~A8 VMOV.F64 D0, D16"
+         
+       } 
+    or (aarch and hex_size == 4) and {
+       ['f'] = "~A8 FMOV S15, %s%d\n~A8 VMOV.F32 S0, S15",
+       ['d'] = "~A8 FMOV D16, %s%d\n~A8 VMOV.F64 D0, D16"
+           
+         }) -- x64
+    or { --x32
+       ['f'] = "~A VMOV S15, %s%d\n~A VMOV.F32 S0, S15",
+       ['d'] = "~A VMOV D16, %s%d, %s%d\n~A VMOV.F64 D0, D16"
+      
+    } -- setting the FPU parameter for the instructions with the string.format( "formatstring",... )
+if (datatype == 'f') or (datatype == 'd') then -- add the FPU instructions
       if (hex_size == 8) or (not aarch and hex_size == 4) then
-        instructions[#instructions + 1] = ((not aarch and (hex_size == 8)) and string.format(fpu[datatype] ,0,reg,1,reg,0)) or string.format(fpu[datatype] ,0,reg,0)  -- x64 FPU and x32
+        instructions[#instructions + 1] = ((not aarch and (hex_size == 8)) and string.format(fpu[datatype] ,reg,1,reg,0)) or string.format(fpu[datatype] ,reg,0)  -- x64 FPU and x32
     elseif aarch and hex_size == 4 then
-      instructions[#instructions + 1] = string.format(fpu[datatype] ,0,reg,0) -- X64 FPU
+      instructions[#instructions + 1] = string.format(fpu[datatype] ,reg,0) -- X64 FPU
     end
+  end
+
+
   end
     instructions[#instructions + 1] = aarch and '~A8 RET' or '~A BX LR' -- add the return instructions
     return instructions -- return the instructions
